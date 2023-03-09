@@ -17,7 +17,8 @@ using namespace std;
 
 bool STOP = false;
 
-void tf_stop() {
+void tf_stop()
+{
   char a;
   while (true) {
     cin >> a;
@@ -28,7 +29,8 @@ void tf_stop() {
   }
 }
 
-void PrintHelp() {
+void PrintHelp()
+{
   cout << "Usage: hvcontrol [options]" << endl;
   cout << endl;
   cout << "Options:" << endl;
@@ -40,7 +42,7 @@ void PrintHelp() {
   cout << endl;
 }
 
-int main(int argc, char **argv) 
+int main(int argc, char ** argv)
 {
   if (argc < 2) {
     clear();
@@ -55,17 +57,10 @@ int main(int argc, char **argv)
   int opt;
   while ((opt = getopt(argc, argv, "t:c:g:")) != -1) {
     switch (opt) {
-    case 't':
-      tableName = optarg;
-      break;
-    case 'c':
-      command = optarg;
-      break;
-    case 'g':
-      groupName = optarg;
-      break;
-    default:
-      break;
+      case 't': tableName = optarg; break;
+      case 'c': command = optarg; break;
+      case 'g': groupName = optarg; break;
+      default: break;
     }
   }
 
@@ -75,9 +70,9 @@ int main(int argc, char **argv)
 
   int sysType = 3; // SY4527
   int linkType = 0;
-  const char *ipaddr = "192.168.1.27";
-  const char *userName = "admin";
-  const char *passwd = "admin";
+  const char * ipaddr = "192.168.1.27";
+  const char * userName = "admin";
+  const char * passwd = "admin";
 
   CAENHVRESULT ret;
   ret = CAENHV_InitSystem((CAENHV_SYSTEM_TYPE_t)sysType, linkType,
@@ -88,49 +83,41 @@ int main(int argc, char **argv)
   }
 
   if (command == "mon") {
-    if (monitoring(sysHndl, groupName.data()) != 0) {
-      return -1;
-    }
-  } else if (command == "off") {
-    if (powerOff(sysHndl, groupName.data()) != 0) {
-      return -1;
-    }
-  } else if (command == "on") {
-    if (powerOn(sysHndl, groupName.data()) != 0) {
-      return -1;
-    }
-  } else if (command == "set") {
-    if (initialize(sysHndl) != 0) {
-      return -1;
-    }
-  } else if (command == "print") {
-    if (print(sysHndl) != 0) {
-      return -1;
-    }
+    if (monitoring(sysHndl, groupName.data()) != 0) { return -1; }
+  }
+  else if (command == "off") {
+    if (powerOff(sysHndl, groupName.data()) != 0) { return -1; }
+  }
+  else if (command == "on") {
+    if (powerOn(sysHndl, groupName.data()) != 0) { return -1; }
+  }
+  else if (command == "set") {
+    if (initialize(sysHndl) != 0) { return -1; }
+  }
+  else if (command == "print") {
+    if (print(sysHndl) != 0) { return -1; }
   }
 
   ret = CAENHV_DeinitSystem(sysHndl);
   if (ret != 0) {
-    printf("CAENHV_DeInitSystem: %s (num. %d)\n", CAENHV_GetError(sysHndl), ret);
+    printf("CAENHV_DeInitSystem: %s (num. %d)\n", CAENHV_GetError(sysHndl),
+           ret);
   }
 
   return 0;
 }
 
-int readHVTable(const char *filename) 
+int readHVTable(const char * filename)
 {
   ifstream input;
   input.open(filename);
-  if (!input.is_open()) {
-    return -1;
-  }
+  if (!input.is_open()) { return -1; }
 
   string line;
   while (input.good()) {
     getline(input, line);
 
-    if (line.empty())
-      continue;
+    if (line.empty()) continue;
 
     istringstream iss(line);
 
@@ -139,8 +126,7 @@ int readHVTable(const char *filename)
     float vset, ohm;
     iss >> name >> slot >> channel >> vset >> ohm >> pmt >> group;
 
-    if (iss.fail() || (name.data())[0] == '#')
-      continue;
+    if (iss.fail() || (name.data())[0] == '#') continue;
 
     HVChannel ch(name.data(), slot, channel, group.data(), vset, ohm);
     fChannels.push_back(ch);
@@ -149,11 +135,11 @@ int readHVTable(const char *filename)
   return 0;
 }
 
-int initialize(int handle) 
+int initialize(int handle)
 {
   CAENHVRESULT ret;
   for (HVChannel ch : fChannels) {
-    const char *name = ch.GetName();
+    const char * name = ch.GetName();
     ushort slot = ch.GetSlot();
     ushort channel = ch.GetChannel();
     float vset = ch.GetVSet();
@@ -178,7 +164,7 @@ int initialize(int handle)
   return 0;
 }
 
-int monitoring(int handle, const char *group) 
+int monitoring(int handle, const char * group)
 {
   std::thread t(tf_stop);
 
@@ -215,8 +201,7 @@ int monitoring(int handle, const char *group)
 
     refresh();
 
-    if (STOP)
-      break;
+    if (STOP) break;
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
@@ -226,7 +211,7 @@ int monitoring(int handle, const char *group)
   return 0;
 }
 
-int print(int handle) 
+int print(int handle)
 {
   float vcur, icur;
   CAENHVRESULT ret;
@@ -251,7 +236,7 @@ int print(int handle)
   return 0;
 }
 
-int powerOn(int handle, const char *group) 
+int powerOn(int handle, const char * group)
 {
   string gname = group;
 
@@ -275,7 +260,7 @@ int powerOn(int handle, const char *group)
   return 0;
 }
 
-int powerOff(int handle, const char *group) 
+int powerOff(int handle, const char * group)
 {
   string gname = group;
 
@@ -298,4 +283,3 @@ int powerOff(int handle, const char *group)
 
   return 0;
 }
-

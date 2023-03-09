@@ -1,8 +1,8 @@
 #ifndef hvcontrol_hh
 #define hvcontrol_hh
 
-#include <vector>
 #include "HVChannel.hh"
+#include <vector>
 
 std::vector<HVChannel> fChannels;
 
