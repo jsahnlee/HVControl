@@ -25,13 +25,9 @@ public:
   }
 
   const char * GetName() const { return fName.c_str(); }
-
   int GetSlot() const { return fSlot; }
-
   int GetChannel() const { return fChannel; }
-
   const char * GetGroup() const { return fGroup.data(); }
-
   float GetVSet() const { return fVSet; }
   float GetMaxI() const { return fVSet / fOhm * 1.05; }
 
