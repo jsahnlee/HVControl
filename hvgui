@@ -1,0 +1,324 @@
+#!/usr/bin/env python
+
+import sys
+import socket
+import struct
+import pickle
+from io import BytesIO
+from datetime import datetime
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from pydblite.sqlite import Database, Table
+import matplotlib as mpl
+import numpy as np
+from hvgui_ui import Ui_MainWindow
+
+#
+# Constants
+#
+kPORT = 7820
+kNCH = 48
+kUNITSIZE = 4
+kMESSLEN = 100*kUNITSIZE
+#
+# Commands
+#
+kHVOFF = 0
+kHVON = 1
+kHVMON = 2
+kTBLCUR = 3
+kTBLNEW = 4
+
+def get_connection(ipaddr):
+    connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        connection.connect(ipaddr)
+    except Exception as e:
+        return None
+    return connection
+
+
+class PMT(QGraphicsEllipseItem):
+    def __init__(self, id, radius):
+        super().__init__(0, 0, 2*radius, 2*radius)
+        self.id = id
+        self.name = None
+        self.group = None
+        self.slot = 0
+        self.ch = 0
+        self.ohm = 0.
+        self.setV = 0.
+        self.setI = 0.
+        self.curV = 0.
+        self.curI = 0.
+        self.isSelected = False
+        self.setPen(QPen(Qt.black, 0.2))
+        self.textItem = QGraphicsSimpleTextItem('%02d' % self.id, self)
+        rect = self.textItem.boundingRect()
+        rect.moveCenter(self.boundingRect().center())
+        self.textItem.setPos(rect.topLeft())
+        c1 = '#808080'  # gray
+        c2 = '#00FF00'  # lime
+        self.c1 = np.array(mpl.colors.to_rgb(c1))
+        self.c2 = np.array(mpl.colors.to_rgb(c2))
+        self.setBrush(QColor(c1))
+
+    def set(self, name, slot, ch, hv, ohm, group):
+        self.name = name
+        self.group = group
+        self.slot = slot
+        self.ch = ch
+        self.setV = hv
+        self.ohm = ohm
+        self.setI = 1.05*hv/ohm
+
+    def setCurrentValue(self, vcur, icur):
+        self.curV = vcur
+        self.curI = icur
+
+        ratio = self.curV/self.setV
+        if ratio > 1:
+            ratio = 1
+
+        ccolor = mpl.colors.to_hex((1-ratio)*self.c1 + ratio*self.c2)
+        if self.curI > self.setI:
+            ccolor = '#FF0000'
+
+        self.setBrush(QColor(ccolor))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.isSelected = not self.isSelected
+            if self.isSelected:
+                self.setPen(QPen(Qt.blue, 3))
+            else:
+                self.setPen(QPen(Qt.black, 0.2))
+        elif event.button() == Qt.RightButton:
+            info = '<pre> V = %6.1f (%6.1f) [V]<br>' % (self.curV, self.setV)
+            info += ' I = %6.1f (%6.1f) [uA]</pre>' % (self.curI, self.setI)
+            self.infobox(info)
+        QGraphicsItem.mousePressEvent(self, event)
+
+    def mouseDoubleClickEvent(self, event):
+        print('turn off')
+        QGraphicsItem.mouseDoubleClickEvent(self, event)
+
+    def isselected(self):
+        return self.isSelected
+
+    def selected(self):
+        self.isSelected = True
+        self.setPen(QPen(Qt.blue, 3))
+
+    def deselected(self):
+        self.isSelected = False
+        self.setPen(QPen(Qt.black, 0.2))
+
+    def check_id(self, id):
+        if self.id == id:
+            return True
+        return False
+
+    def check_group(self, grp):
+        if self.group == grp:
+            return True
+        return False
+
+    def getid(self):
+        return self.id
+
+    def infobox(self, info):
+        font = QFont()
+        font.setPointSize(12)
+        box = QMessageBox()
+        box.setWindowTitle('PMT %d' % self.id)
+        box.setFont(font)
+        box.setIcon(QMessageBox.Information)
+        box.setText(info)
+        box.exec()
+
+
+class MainWindow(QMainWindow, Ui_MainWindow):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setupUi(self)
+
+        #
+        # hvserver
+        ipaddr = ('localhost', kPORT)
+        self.socket = get_connection(ipaddr)
+        if not self.socket:
+            print(' ERROR: hvserver is not responding!!! please check server!!!')
+            exit(0)
+        
+        self.PMTList = []
+
+        #
+        # Setup UI
+        #
+        self.center()
+
+        # hvgrahics
+        scene = QGraphicsScene()
+
+        scale = 1.3
+        frame = QGraphicsRectItem(0, 0, 430*scale, 430*scale)
+        frame.setPos(0, 0)
+        scene.addItem(frame)
+
+        xi = 15*scale
+        yi = 15*scale
+        dx = 60*scale
+        dy = 60*scale
+
+        for i in range(7):
+            for j in range(7):
+                id = 7*j+i+1
+                if id == 49:
+                    break
+                pmt = PMT(id, 20*scale)
+                if id == 48:
+                    pmt.setPos(xi+i*dx+dx/2, yi+j*dx)
+                else:
+                    pmt.setPos(xi+i*dx, yi+j*dx)
+                scene.addItem(pmt)
+                self.PMTList.append(pmt)
+
+        self.hvgraphics.setScene(scene)
+
+        # hvtable from hvserver
+        cmd = struct.pack('i', kTBLCUR)
+        self.socket.send(cmd)
+        recvbuf = self.socket.recv(256)
+        #fname = str(recvbuf, 'utf-8')
+        #fname = recvbuf.decode('utf-8')
+        #fname.rstrip('\x00')
+        fname = 'test.table'
+        #print(fname)
+        self.read_hvtable(fname)
+
+        #
+        # signals and slots
+        #
+        self.loadButton.clicked.connect(self.load_hvtable)
+        self.selectAllButton.clicked.connect(self.select_all)
+        self.select8Button.clicked.connect(self.select_8)
+        self.select10Button.clicked.connect(self.select_10)
+        self.deselectButton.clicked.connect(self.deselect)
+        self.turnOnButton.clicked.connect(self.turn_on)
+        self.turnOffButton.clicked.connect(self.turn_off)
+
+        #
+        # QTimer
+        #
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.monitoring)
+        self.timer.setInterval(1000)
+        self.timer.start()
+
+    def find_pmt(self, id):
+        for pmt in self.PMTList:
+            if pmt.check_id(id):
+                return pmt
+        return None
+
+    def read_hvtable(self, fname):
+        f = open(fname)
+        for line in f.readlines():
+            line = line.strip()
+            if line.startswith('#') or not line:
+                continue
+            col = line.split()
+            pmt = self.find_pmt(int(col[5]))
+            pmt.set(col[0], int(col[1]), int(col[2]),
+                    float(col[3]), float(col[4]), col[6])
+
+    def load_hvtable(self):
+        result = QFileDialog.getOpenFileName(self, 'Load HV table', '',
+                                             'HV Table (*.table);;All Files (*)')
+        hvtable = str(result[0])
+
+        if hvtable:
+            self.read_hvtable(hvtable)
+
+    def select_all(self):
+        for pmt in self.PMTList:
+            pmt.selected()
+
+    def select_8(self):
+        for pmt in self.PMTList:
+            if pmt.check_group('8'):
+                pmt.selected()
+
+    def select_10(self):
+        for pmt in self.PMTList:
+            if pmt.check_group('10'):
+                pmt.selected()
+
+    def deselect(self):
+        for pmt in self.PMTList:
+            pmt.deselected()
+
+    def turn_on(self):
+        psel = []
+        for pmt in self.PMTList:
+            if pmt.isselected():
+                psel.append(pmt.getid())
+        nsel = len(psel)
+        pselbytes = np.array(psel, dtype='i').tobytes()
+
+        cmd = struct.pack('i', kHVON)
+        self.socket.send(cmd)
+        if nsel == kNCH:
+            mess = struct.pack('i', 0)
+            self.socket.send(mess)
+        else:
+            mess = struct.pack('i', nsel)
+            self.socket.send(mess)
+            self.socket.send(pselbytes)
+
+    def turn_off(self):
+        psel = []
+        for pmt in self.PMTList:
+            if pmt.isselected():
+                psel.append(pmt.getid())
+        nsel = len(psel)
+        pselbytes = np.array(psel, dtype='i').tobytes()
+
+        cmd = struct.pack('i', kHVOFF)
+        self.socket.send(cmd)
+        if nsel == kNCH:
+            mess = struct.pack('i', 0)
+            self.socket.send(mess)
+        else:
+            mess = struct.pack('i', nsel)
+            self.socket.send(mess)
+            self.socket.send(pselbytes)
+
+    def monitoring(self):
+        cmd = struct.pack('i', kHVMON)
+        self.socket.send(cmd)
+        recvbuf = self.socket.recv(2*kNCH*kUNITSIZE)
+        values = struct.unpack('%df' % (2*kNCH), recvbuf)
+        for i in range(kNCH):
+            vcur = values[i]
+            icur = values[i+kNCH]
+            self.PMTList[i].setCurrentValue(vcur, icur)
+
+    def center(self):
+        qr = self.frameGeometry()
+        cp = QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+
+    # create the main window
+    window = MainWindow()
+    window.show()
+
+    # start the event loop
+    sys.exit(app.exec())
