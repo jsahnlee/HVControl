@@ -1,20 +1,24 @@
 #ifndef HVChannel_hh
 #define HVChannel_hh
 
-#include <ncurses.h>
 #include <string>
+#include <ncurses.h>
 
 class HVChannel {
 public:
   HVChannel(const char * name, int slot, int channel, const char * group,
-            float vset, float ohm)
+            float vset, float ohm, int id)
   {
     fName = name;
+    fGroup = group;
+    fID = id;
     fSlot = slot;
     fChannel = channel;
-    fGroup = group;
     fVSet = vset;
     fOhm = ohm;
+    fVCur = 0.;
+    fICur = 0.;
+    fPower = 0;
   }
   ~HVChannel() {}
 
@@ -24,12 +28,38 @@ public:
     fICur = i;
   }
 
-  const char * GetName() const { return fName.c_str(); }
+  void SetPower(int p)
+  {
+    fPower = p;
+  }
+  int GetPower() const { return fPower; }
+
+  void RampUp()
+  {
+    fVCur += fVSet/20.;
+    if (fVCur > fVSet)
+      fVCur = fVSet;
+    fICur = fVCur/fOhm;
+  }
+
+  void RampDown()
+  {
+    fVCur -= fVSet/20;
+    if (fVCur < 0)
+      fVCur = 0;
+    fICur = fVCur/fOhm;    
+  }
+
+  int GetID() const { return fID; }
   int GetSlot() const { return fSlot; }
   int GetChannel() const { return fChannel; }
-  const char * GetGroup() const { return fGroup.data(); }
   float GetVSet() const { return fVSet; }
-  float GetMaxI() const { return fVSet / fOhm * 1.05; }
+  float GetIMax() const { return fVSet / fOhm * 1.05; }
+  float GetV() const { return fVCur; }
+  float GetI() const { return fICur; }
+  float GetOhm() const { return fOhm; }
+  const char * GetName() const { return fName.c_str(); }
+  const char * GetGroup() const { return fGroup.data(); }
 
   void Print() const
   {
@@ -44,14 +74,16 @@ public:
   }
 
 private:
-  std::string fName;
-  std::string fGroup;
+  int fID;
   int fSlot;
   int fChannel;
+  int fPower;
   float fVSet;
   float fOhm;
   float fVCur;
   float fICur;
+  std::string fName;
+  std::string fGroup;
 };
 
 #endif

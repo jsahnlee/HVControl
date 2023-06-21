@@ -1,11 +1,12 @@
+#include <algorithm>
 #include <cstdarg>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <string.h>
 #include <thread>
 #include <time.h>
 #include <unistd.h>
-#include <string.h>
 
 #include "TDatime.h"
 #include "TMessage.h"
@@ -86,9 +87,15 @@ bool readhvtable(const char * tname)
 
     if (iss.fail() || (name.data())[0] == '#') continue;
 
-    HVChannel * ch = new HVChannel(name.data(), slot, channel, group.data(), vset, ohm, pmt);
+    HVChannel * ch =
+        new HVChannel(name.data(), slot, channel, group.data(), vset, ohm, pmt);
     fChannels.push_back(ch);
   }
+
+  sort(fChannels.begin(), fChannels.end(),
+       [](const HVChannel * lhs, const HVChannel * rhs) {
+         return lhs->GetID() < rhs->GetID();
+       });
 
   return true;
 }
@@ -186,7 +193,9 @@ bool hvpower(ulong power, int n, int * chid)
     if (n > 0) {
       pass = true;
       for (int i = 0; i < n; i++) {
-        if (id == chid[i]) pass = false;
+        if (id == chid[i]) {
+          pass = false;
+        }
       }
     }
     if (pass) continue;
@@ -235,9 +244,7 @@ void tf_monitoring_toy()
   while (true) {
     std::unique_lock<std::mutex> lock(fCAENMutex);
     for (HVChannel * ch : fChannels) {
-      if (ch->GetPower() == 0) { 
-        ch->RampDown(); 
-      }
+      if (ch->GetPower() == 0) { ch->RampDown(); }
       else {
         ch->RampUp();
       }
@@ -274,7 +281,7 @@ void tf_msgserver()
       continue;
     }
 
-    int stat = socket->RecvRaw(buffer, kUNITSIZE);
+    int stat = socket->RecvRaw(buffer, 2*kUNITSIZE);
     if (stat <= 0) {
       if (stat == 0 || stat == -5) {
         Log(INFO, "msgserver", "client disconnected [ip=%s, port=%d]",
@@ -289,28 +296,27 @@ void tf_msgserver()
       delete socket;
     }
     else {
-      int cmd;
+      int cmd, size;
       memcpy(&cmd, buffer, kUNITSIZE);
+      memcpy(&size, buffer+kUNITSIZE, kUNITSIZE);
 
       if (cmd == kHVOFF) {
         int nch = 0;
         int * chnum = nullptr;
-        socket->RecvRaw(buffer, kUNITSIZE);
-        memcpy(&nch, buffer, kUNITSIZE);
-        if (nch > 0) {
+        if (size < kNCH) {
+          nch = size;
           chnum = new int[nch];
           socket->RecvRaw(buffer, nch * kUNITSIZE);
           memcpy(chnum, buffer, nch * kUNITSIZE);
         }
         hvpower(0, nch, chnum);
-        if (chnum) delete chnum;
+        if (chnum) delete chnum;        
       }
       else if (cmd == kHVON) {
         int nch = 0;
         int * chnum = nullptr;
-        socket->RecvRaw(buffer, kUNITSIZE);
-        memcpy(&nch, buffer, kUNITSIZE);
-        if (nch > 0) {
+        if (size < kNCH) {
+          nch = size;
           chnum = new int[nch];
           socket->RecvRaw(buffer, nch * kUNITSIZE);
           memcpy(chnum, buffer, nch * kUNITSIZE);
@@ -336,15 +342,19 @@ void tf_msgserver()
 
         memcpy(buffer, vcur, kNCH * kUNITSIZE);
         memcpy(buffer + kNCH * kUNITSIZE, icur, kNCH * kUNITSIZE);
-        socket->SendRaw(buffer, 2*kNCH * kUNITSIZE);
+        socket->SendRaw(buffer, 2 * kNCH * kUNITSIZE);
       }
       else if (cmd == kTBLNEW) {
         char fname[256];
-        socket->Recv(fname, 256);
-        if (readhvtable(fname)) { hvloadsetting(); }
+        socket->RecvRaw(fname, size);
+        TString name(fname, size);
+        if (readhvtable(name.Data())) { hvloadsetting(); }
       }
       else if (cmd == kTBLCUR) {
-        socket->SendRaw(fHVTable.Data(), 256);
+        int ssize =  fHVTable.Length();
+        memcpy(buffer, &ssize, kUNITSIZE);
+        socket->SendRaw(buffer, kUNITSIZE);
+        socket->SendRaw(fHVTable.Data(), ssize);
       }
       else {
         Log(WARNING, "msgserver", "unknown command (%d) received", cmd);
@@ -386,5 +396,7 @@ void Log(LEVEL_t level, const char * where, const char * log, ...)
   TString mess = Form("%s: %s", where, buffer);
 
   TString log = timestr + levelstr + mess;
+
+  std::unique_lock<std::mutex> lock(fLogMutex);
   cout << log << endl;
 }

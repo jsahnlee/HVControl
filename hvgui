@@ -53,6 +53,7 @@ class PMT(QGraphicsEllipseItem):
         self.curV = 0.
         self.curI = 0.
         self.isSelected = False
+        self.power = 0
         self.setPen(QPen(Qt.black, 0.2))
         self.textItem = QGraphicsSimpleTextItem('%02d' % self.id, self)
         rect = self.textItem.boundingRect()
@@ -100,10 +101,6 @@ class PMT(QGraphicsEllipseItem):
             self.infobox(info)
         QGraphicsItem.mousePressEvent(self, event)
 
-    def mouseDoubleClickEvent(self, event):
-        print('turn off')
-        QGraphicsItem.mouseDoubleClickEvent(self, event)
-
     def isselected(self):
         return self.isSelected
 
@@ -127,6 +124,12 @@ class PMT(QGraphicsEllipseItem):
 
     def getid(self):
         return self.id
+    
+    def setpower(self, power):
+        self.power = power
+
+    def getpower(self):
+        return self.power
 
     def infobox(self, info):
         font = QFont()
@@ -188,14 +191,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.hvgraphics.setScene(scene)
 
         # hvtable from hvserver
-        cmd = struct.pack('i', kTBLCUR)
+        cmd = struct.pack('2i', kTBLCUR, 0)
         self.socket.send(cmd)
-        recvbuf = self.socket.recv(256)
-        #fname = str(recvbuf, 'utf-8')
-        #fname = recvbuf.decode('utf-8')
-        #fname.rstrip('\x00')
-        fname = 'test.table'
-        #print(fname)
+        buf = self.socket.recv(kUNITSIZE)
+        ssize = struct.unpack('i', buf)
+        buf = self.socket.recv(ssize[0])
+        fname = str(buf).strip("b'\x00'")
         self.read_hvtable(fname)
 
         #
@@ -238,9 +239,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         result = QFileDialog.getOpenFileName(self, 'Load HV table', '',
                                              'HV Table (*.table);;All Files (*)')
         hvtable = str(result[0])
-
         if hvtable:
             self.read_hvtable(hvtable)
+            mess = hvtable.encode()
+            cmd = struct.pack('2i', kTBLNEW, len(mess))
+            self.socket.send(cmd)
+            self.socket.send(mess)
 
     def select_all(self):
         for pmt in self.PMTList:
@@ -265,17 +269,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for pmt in self.PMTList:
             if pmt.isselected():
                 psel.append(pmt.getid())
+                pmt.setpower(1)
         nsel = len(psel)
         pselbytes = np.array(psel, dtype='i').tobytes()
 
-        cmd = struct.pack('i', kHVON)
+        cmd = struct.pack('2i', kHVON, nsel)
         self.socket.send(cmd)
-        if nsel == kNCH:
-            mess = struct.pack('i', 0)
-            self.socket.send(mess)
-        else:
-            mess = struct.pack('i', nsel)
-            self.socket.send(mess)
+        if nsel < kNCH:
             self.socket.send(pselbytes)
 
     def turn_off(self):
@@ -283,28 +283,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for pmt in self.PMTList:
             if pmt.isselected():
                 psel.append(pmt.getid())
+                pmt.setpower(0)
         nsel = len(psel)
         pselbytes = np.array(psel, dtype='i').tobytes()
 
-        cmd = struct.pack('i', kHVOFF)
+        cmd = struct.pack('2i', kHVOFF, nsel)
         self.socket.send(cmd)
-        if nsel == kNCH:
-            mess = struct.pack('i', 0)
-            self.socket.send(mess)
-        else:
-            mess = struct.pack('i', nsel)
-            self.socket.send(mess)
+        if nsel < kNCH:
             self.socket.send(pselbytes)
 
     def monitoring(self):
-        cmd = struct.pack('i', kHVMON)
+        cmd = struct.pack('2i', kHVMON, 0)
         self.socket.send(cmd)
-        recvbuf = self.socket.recv(2*kNCH*kUNITSIZE)
-        values = struct.unpack('%df' % (2*kNCH), recvbuf)
+        buf = self.socket.recv(2*kNCH*kUNITSIZE)
+        values = struct.unpack('%df' % (2*kNCH), buf)
         for i in range(kNCH):
             vcur = values[i]
             icur = values[i+kNCH]
-            self.PMTList[i].setCurrentValue(vcur, icur)
+            pmt = self.find_pmt(i+1)
+            pmt.setCurrentValue(vcur, icur)
 
     def center(self):
         qr = self.frameGeometry()

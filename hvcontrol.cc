@@ -128,7 +128,7 @@ int readHVTable(const char * filename)
 
     if (iss.fail() || (name.data())[0] == '#') continue;
 
-    HVChannel ch(name.data(), slot, channel, group.data(), vset, ohm);
+    HVChannel ch(name.data(), slot, channel, group.data(), vset, ohm, pmt);
     fChannels.push_back(ch);
   }
 
@@ -143,7 +143,7 @@ int initialize(int handle)
     ushort slot = ch.GetSlot();
     ushort channel = ch.GetChannel();
     float vset = ch.GetVSet();
-    float iset = ch.GetMaxI();
+    float iset = ch.GetIMax();
     ret = CAENHV_SetChName(handle, slot, 1, &channel, name);
     if (ret != 0) {
       printf("CAENHV_SetChName: %s (num. %d)\n", CAENHV_GetError(handle), ret);

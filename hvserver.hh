@@ -26,6 +26,7 @@ typedef enum { INFO, WARNING, ERROR } LEVEL_t;
 int fSystemHandle;
 std::vector<HVChannel*> fChannels;
 std::mutex fCAENMutex;
+std::mutex fLogMutex;
 TString fHVTable;
 int fPowerState;
 
