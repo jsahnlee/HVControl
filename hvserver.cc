@@ -97,6 +97,8 @@ bool readhvtable(const char * tname)
          return lhs->GetID() < rhs->GetID();
        });
 
+  Log(INFO, "readhvtable", "read hv table (%s)", tname);
+
   return true;
 }
 
@@ -145,6 +147,8 @@ bool hvloadsetting()
       return false;
     }
   }
+
+  Log(INFO, "hvloadsetting", "load hv setting to CAEN system");
 
   return true;
 }
