@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+hvserver="/home/cupsoft/Devs/HVControl/hvserver"
+log="hvserver.log"
+ipaddr="localhost"
+user="admin"
+passwd="passwd"
+table=$1
+
+# kill previous server if exits
+pkill hvserver
+
+$hvserver -t $table -a $ipaddr -u $user -p $passwd > $log 2>&1 &
+
