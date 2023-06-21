@@ -181,6 +181,8 @@ bool hvpower(ulong power, int n, int * chid)
     }
   }
 
+  Log(INFO, "hvpower", "hv powered %s", power == 1 ? "on" : "off");
+
   return true;
 }
 */
@@ -205,6 +207,9 @@ bool hvpower(ulong power, int n, int * chid)
     if (pass) continue;
     ch->SetPower(power);
   }
+
+  Log(INFO, "hvpower", "hv powered %s", power == 1 ? "on" : "off");
+  
   return true;
 }
 
