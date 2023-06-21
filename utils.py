@@ -1,6 +1,7 @@
 import socket
 import struct
 
+
 def get_connection(ipaddr):
     connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -8,6 +9,7 @@ def get_connection(ipaddr):
     except Exception as e:
         return None
     return connection
+
 
 def send_command(connection, cmd):
     sendbuf = struct.pack('i')

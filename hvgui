@@ -30,6 +30,7 @@ kHVMON = 2
 kTBLCUR = 3
 kTBLNEW = 4
 
+
 def get_connection(ipaddr):
     connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -124,7 +125,7 @@ class PMT(QGraphicsEllipseItem):
 
     def getid(self):
         return self.id
-    
+
     def setpower(self, power):
         self.power = power
 
@@ -154,7 +155,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.socket:
             print(' ERROR: hvserver is not responding!!! please check server!!!')
             exit(0)
-        
+
         self.PMTList = []
 
         #
