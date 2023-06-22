@@ -79,9 +79,11 @@ class PMT(QGraphicsEllipseItem):
         self.curV = vcur
         self.curI = icur
 
-        ratio = self.curV/self.setV
-        if ratio > 1:
-            ratio = 1
+        ratio = 0
+        if self.setV > 0:
+            ratio = self.curV/self.setV
+            if ratio > 1:
+                ratio = 1
 
         ccolor = mpl.colors.to_hex((1-ratio)*self.c1 + ratio*self.c2)
         if self.curI > self.setI:
